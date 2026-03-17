@@ -210,8 +210,7 @@ func exec(envFile: String, command: [String]) {
 
     // Single Touch ID prompt for all keychain values
     if !keychainKeys.isEmpty {
-        let keyList = keychainKeys.joined(separator: ", ")
-        requireTouchID(reason: "Unlock secrets: \(keyList)")
+        requireTouchID(reason: "Unlock \(keychainKeys.count) secret\(keychainKeys.count == 1 ? "" : "s")")
 
         // Resolve keychain values
         for line in contents.components(separatedBy: .newlines) {
