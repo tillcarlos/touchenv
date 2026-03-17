@@ -75,12 +75,23 @@ func store(service: String) {
     ]
     SecItemDelete(deleteQuery as CFDictionary)
 
+    var accessError: Unmanaged<CFError>?
+    guard let accessControl = SecAccessControlCreateWithFlags(
+        nil,
+        kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        .biometryCurrentSet,
+        &accessError
+    ) else {
+        fputs("Error: failed to create access control: \(accessError?.takeRetainedValue().localizedDescription ?? "unknown")\n", stderr)
+        exit(1)
+    }
+
     let addQuery: [String: Any] = [
         kSecClass as String: kSecClassGenericPassword,
         kSecAttrService as String: service,
         kSecAttrAccount as String: account,
         kSecValueData as String: trimmed,
-        kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        kSecAttrAccessControl as String: accessControl,
     ]
 
     let status = SecItemAdd(addQuery as CFDictionary, nil)
@@ -92,13 +103,14 @@ func store(service: String) {
     fputs("Stored '\(service)' in Keychain (Touch ID protected)\n", stderr)
 }
 
-func getValue(service: String) -> String {
+func getValue(service: String, context: LAContext) -> String {
     let query: [String: Any] = [
         kSecClass as String: kSecClassGenericPassword,
         kSecAttrService as String: service,
         kSecAttrAccount as String: account,
         kSecReturnData as String: true,
         kSecMatchLimit as String: kSecMatchLimitOne,
+        kSecUseAuthenticationContext as String: context,
     ]
 
     var result: AnyObject?
@@ -124,8 +136,8 @@ func getValue(service: String) -> String {
 }
 
 func get(service: String) {
-    requireTouchID(reason: "Access 1 secret")
-    print(getValue(service: service), terminator: "")
+    let context = requireTouchID(reason: "Access 1 secret")
+    print(getValue(service: service, context: context), terminator: "")
 }
 
 func delete(service: String) {
@@ -207,11 +219,11 @@ func exec(envFile: String, command: [String]) {
 
     // Single Touch ID prompt for all keychain values, then resolve
     if !keychainKeys.isEmpty {
-        requireTouchID(reason: "Unlock \(keychainKeys.count) secret\(keychainKeys.count == 1 ? "" : "s")")
+        let context = requireTouchID(reason: "Unlock \(keychainKeys.count) secret\(keychainKeys.count == 1 ? "" : "s")")
 
         for entry in entries where entry.value.hasPrefix("touchenv:") {
             let keychainKey = String(entry.value.dropFirst("touchenv:".count))
-            env[entry.key] = getValue(service: keychainKey)
+            env[entry.key] = getValue(service: keychainKey, context: context)
         }
     }
 
