@@ -5,7 +5,8 @@ import LocalAuthentication
 let account = "touchenv"
 
 /// Prompt Touch ID and block until the user authenticates or cancels.
-func requireTouchID(reason: String) {
+/// Returns the authenticated LAContext so it can be reused for Keychain access.
+func requireTouchID(reason: String) -> LAContext {
     let context = LAContext()
     var error: NSError?
 
@@ -30,6 +31,8 @@ func requireTouchID(reason: String) {
         fputs("Error: Touch ID authentication failed: \(err.localizedDescription)\n", stderr)
         exit(1)
     }
+
+    return context
 }
 
 func store(service: String) {
@@ -121,7 +124,7 @@ func getValue(service: String) -> String {
 }
 
 func get(service: String) {
-    requireTouchID(reason: "Access secret '\(service)' from Keychain")
+    requireTouchID(reason: "Access 1 secret")
     print(getValue(service: service), terminator: "")
 }
 
@@ -189,43 +192,26 @@ func exec(envFile: String, command: [String]) {
     }
 
     var env = ProcessInfo.processInfo.environment
+    let entries = parseEnvFile(contents)
+
+    // Collect keychain keys that need resolving
     var keychainKeys: [String] = []
-
-    // First pass: find which keys need keychain lookup
-    for line in contents.components(separatedBy: .newlines) {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
-
-        guard let eqIndex = trimmed.firstIndex(of: "=") else { continue }
-        let key = String(trimmed[trimmed.startIndex..<eqIndex])
-        let value = String(trimmed[trimmed.index(after: eqIndex)...])
-            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-
-        if value.hasPrefix("touchenv:") {
-            keychainKeys.append(String(value.dropFirst("touchenv:".count)))
+    for entry in entries {
+        env[entry.key] = entry.value
+        if entry.value.hasPrefix("touchenv:") {
+            let keychainKey = String(entry.value.dropFirst("touchenv:".count))
+            validateKeychainKey(keychainKey)
+            keychainKeys.append(keychainKey)
         }
-
-        env[key] = value
     }
 
-    // Single Touch ID prompt for all keychain values
+    // Single Touch ID prompt for all keychain values, then resolve
     if !keychainKeys.isEmpty {
         requireTouchID(reason: "Unlock \(keychainKeys.count) secret\(keychainKeys.count == 1 ? "" : "s")")
 
-        // Resolve keychain values
-        for line in contents.components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
-
-            guard let eqIndex = trimmed.firstIndex(of: "=") else { continue }
-            let key = String(trimmed[trimmed.startIndex..<eqIndex])
-            let value = String(trimmed[trimmed.index(after: eqIndex)...])
-                .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-
-            if value.hasPrefix("touchenv:") {
-                let keychainKey = String(value.dropFirst("touchenv:".count))
-                env[key] = getValue(service: keychainKey)
-            }
+        for entry in entries where entry.value.hasPrefix("touchenv:") {
+            let keychainKey = String(entry.value.dropFirst("touchenv:".count))
+            env[entry.key] = getValue(service: keychainKey)
         }
     }
 
@@ -274,6 +260,35 @@ func usage() {
 
 // MARK: - Helpers
 
+/// Parse a .env file into an array of (key, value) pairs, skipping comments and blank lines.
+func parseEnvFile(_ contents: String) -> [(key: String, value: String)] {
+    var entries: [(key: String, value: String)] = []
+    for line in contents.components(separatedBy: .newlines) {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty || trimmed.hasPrefix("#") { continue }
+
+        guard let eqIndex = trimmed.firstIndex(of: "=") else { continue }
+        let key = String(trimmed[trimmed.startIndex..<eqIndex])
+        let value = String(trimmed[trimmed.index(after: eqIndex)...])
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+
+        entries.append((key: key, value: value))
+    }
+    return entries
+}
+
+/// Validate a keychain key name, exiting with an error if invalid.
+func validateKeychainKey(_ key: String) {
+    if key.isEmpty {
+        fputs("Error: keychain key name cannot be empty\n", stderr)
+        exit(1)
+    }
+    if key.contains("\0") {
+        fputs("Error: keychain key name contains invalid characters\n", stderr)
+        exit(1)
+    }
+}
+
 extension Data {
     var nilIfEmpty: Data? {
         isEmpty ? nil : self
@@ -298,6 +313,7 @@ struct TouchEnv {
                 fputs("Usage: touchenv store <key>\n", stderr)
                 exit(1)
             }
+            validateKeychainKey(key)
             store(service: key)
 
         case "get":
@@ -305,6 +321,7 @@ struct TouchEnv {
                 fputs("Usage: touchenv get <key>\n", stderr)
                 exit(1)
             }
+            validateKeychainKey(key)
             get(service: key)
 
         case "delete":
@@ -312,6 +329,7 @@ struct TouchEnv {
                 fputs("Usage: touchenv delete <key>\n", stderr)
                 exit(1)
             }
+            validateKeychainKey(key)
             delete(service: key)
 
         case "list":
