@@ -7,14 +7,19 @@ No plaintext keys in your repo. No extra services. Just your fingerprint.
 ## Install
 
 ```bash
-brew install tillcarlos/tap/touchenv
-```
-
-Or build from source:
-
-```bash
 git clone https://github.com/tillcarlos/touchenv.git
 cd touchenv
+```
+
+It's a single Swift file. Read it first — you should never blindly install something that touches your Keychain:
+
+```bash
+claude "Is there ANYTHING I should worry about in this repo?"
+```
+
+Then install:
+
+```bash
 make install
 ```
 
@@ -31,7 +36,7 @@ NODE_STAGING_KEY=SecretKeysShouldNotBeOntheFilesystem
 
 Replace secret values with a `touchenv:` reference. The actual secret lives in macOS Keychain, protected by Touch ID.
 
-![.env file with touchenv reference](documentation/new%20env%20file.jpg)
+![.env file with touchenv reference](documentation/new_env_file.jpg)
 
 ```bash
 # Do this
@@ -105,13 +110,17 @@ Secrets are stored in the macOS Keychain under the `touchenv` account, with `kSe
 
 ## Onboarding new devs
 
-1. Install touchenv: `brew install tillcarlos/tap/touchenv`
+1. Clone and install touchenv
 2. Store the required secrets:
    ```bash
    touchenv store MY_NODE_KEY
    touchenv store MY_REGISTRY_PASSWORD
    ```
-3. Run as usual: `pnpm deploy:staging`
+3. Add `touchenv exec .env -- ` before your command wherever you need secrets:
+   ```json
+   "deploy:staging": "touchenv exec .env.staging -- bin/deploy.sh staging"
+   ```
+4. Run as usual: `pnpm deploy:staging`
 
 If a secret is missing, touchenv tells them exactly what to do:
 
