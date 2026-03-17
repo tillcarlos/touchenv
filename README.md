@@ -1,5 +1,29 @@
 # touchenv
 
+I had too many secret files in my .env locally. This became a problem.
+
+We didn't want to use dotenvx as we only need one or two secrets stored. Dotenvx looked like overkill.
+
+We use Rails encrypted credentials, so there's usually only one key to store safely. And only when editing the staging / production credentials.
+
+That's why I made this repo, to store these keys in the Macos keychain. The touchid is required every time I use the key.
+
+So it's also safe from the LLM to read:
+
+This is how it looks:
+
+![Touch ID prompt when running touchenv exec](documentation/usage.jpg)
+
+Disclaimer: this is a quick tool I coded with Claude Code. I'm a CS postgrad with 20 years of coding experience. If you find anything that should be changed, please file a bug or email me till@tillcarlos.com
+
+Cool?
+
+Then let's enter 🤖 land (everything below and the code)
+
+## 🤖 Opus, take it away!
+
+What this is about:
+
 Store secrets in macOS Keychain. Unlock with Touch ID. Use them in `.env` files.
 
 No plaintext keys in your repo. No extra services. Just your fingerprint.
@@ -66,8 +90,6 @@ Use `touchenv exec` to load a `.env` file, resolve all `touchenv:` references vi
 ```bash
 touchenv exec .env.staging -- bin/deploy.sh staging
 ```
-
-![Touch ID prompt when running touchenv exec](documentation/usage.jpg)
 
 One fingerprint tap unlocks all secrets and runs your command.
 
