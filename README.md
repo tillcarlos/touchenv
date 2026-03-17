@@ -14,7 +14,7 @@ This is how it looks:
 
 ![Touch ID prompt when running touchenv exec](documentation/usage.jpg)
 
-Disclaimer: this is a quick tool I coded with Claude Code. I'm a CS postgrad with 20 years of coding experience. If you find anything that should be changed, please file a bug or email me till@tillcarlos.com
+Disclaimer: this is a quick tool I coded with Claude Code. I'm a CTO with 20 years of coding experience and a CS degree. I'll look into any concerns that get raised. Please file an issue or email me till@tillcarlos.com
 
 Cool?
 
