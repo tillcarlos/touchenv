@@ -2,3 +2,4 @@
 .swiftpm/
 *.xcodeproj/
 .DS_Store
+.iterm_tab_color

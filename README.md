@@ -18,6 +18,26 @@ cd touchenv
 make install
 ```
 
+## The problem
+
+Secrets like API keys and deploy credentials end up as plaintext in `.env` files, shared over Slack, or committed to repos.
+
+```bash
+# Don't do this
+NODE_STAGING_KEY=SecretKeysShouldNotBeOntheFilesystem
+```
+
+## The solution
+
+Replace secret values with a `touchenv:` reference. The actual secret lives in macOS Keychain, protected by Touch ID.
+
+![.env file with touchenv reference](documentation/new%20env%20file.jpg)
+
+```bash
+# Do this
+NODE_STAGING_KEY=touchenv:MYPROJECT_NODE_STAGING_KEY
+```
+
 ## Usage
 
 ### Store a secret
@@ -34,31 +54,17 @@ Or pipe it in:
 echo "s3cret" | touchenv store MY_SECRET
 ```
 
-### Retrieve a secret
+### Run with secrets
 
-```bash
-touchenv get MY_SECRET   # Touch ID prompt → prints value
-```
-
-### Use in `.env` files
-
-Reference Keychain secrets with the `touchenv:` prefix:
-
-```bash
-# .env.staging
-DB_HOST=10.0.0.5
-PORT=8443
-NODE_KEY=touchenv:MY_NODE_KEY
-REGISTRY_PASSWORD=touchenv:MY_REGISTRY_PASSWORD
-```
-
-Then run your command through `touchenv exec`:
+Use `touchenv exec` to load a `.env` file, resolve all `touchenv:` references via a single Touch ID prompt, and run your command:
 
 ```bash
 touchenv exec .env.staging -- bin/deploy.sh staging
 ```
 
-One Touch ID prompt unlocks all secrets, resolves the `.env` file, and runs your command.
+![Touch ID prompt when running touchenv exec](documentation/usage.jpg)
+
+One fingerprint tap unlocks all secrets and runs your command.
 
 ### npm scripts
 
@@ -66,9 +72,15 @@ One Touch ID prompt unlocks all secrets, resolves the `.env` file, and runs your
 {
   "scripts": {
     "deploy:staging": "touchenv exec .env.staging -- bin/deploy.sh staging",
-    "credentials:staging": "touchenv exec .env.staging -- tsx src/scripts/credentials.ts staging"
+    "credentials:staging": "touchenv exec .env -- tsx src/scripts/credentials.ts staging"
   }
 }
+```
+
+### Retrieve a single secret
+
+```bash
+touchenv get MY_SECRET   # Touch ID prompt → prints value to stdout
 ```
 
 ### All commands
@@ -83,8 +95,10 @@ touchenv exec <envfile> -- <cmd>    Load .env, resolve touchenv: values, run cmd
 
 ## How it works
 
-- Secrets are stored in the macOS Keychain as generic passwords
-- `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` — no iCloud sync, device-only
+Secrets are stored in the macOS Keychain under the `touchenv` account, with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` (no iCloud sync, device-only).
+
+![Keychain Access showing a touchenv secret](documentation/keychain.jpg)
+
 - `touchenv get` and `touchenv exec` require Touch ID (via `LAContext`) before reading any secret
 - Other apps accessing the same Keychain item get a system password prompt
 - 194KB universal binary (arm64 + x86_64), no dependencies
