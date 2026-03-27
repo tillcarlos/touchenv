@@ -128,7 +128,16 @@ Secrets are stored in the macOS Keychain under the `touchenv` account, with `kSe
 
 - `touchenv get` and `touchenv exec` require Touch ID (via `LAContext`) before reading any secret
 - Other apps accessing the same Keychain item get a system password prompt
+- `exec` uses `execvp` to replace the touchenv process with your command — stdin, signals, and TTY work correctly for interactive programs
 - 194KB universal binary (arm64 + x86_64), no dependencies
+
+### After rebuilding / updating
+
+When you rebuild and reinstall touchenv, macOS sees a new binary signature and will show a Keychain password prompt:
+
+![Keychain access prompt after rebuild](documentation/accept_all_once.jpg)
+
+Click **Always Allow** once — after that, Touch ID works as before.
 
 ## Onboarding new devs
 

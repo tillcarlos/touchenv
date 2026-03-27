@@ -3,6 +3,7 @@ import Security
 import LocalAuthentication
 
 let account = "touchenv"
+let version = "1.0.0"
 
 /// Prompt Touch ID and block until the user authenticates or cancels.
 /// Returns the authenticated LAContext so it can be reused for Keychain access.
@@ -232,24 +233,29 @@ func exec(envFile: String, command: [String]) {
         exit(1)
     }
 
-    // Execute the command with resolved environment
-    let task = Process()
-    task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-    task.arguments = command
-    task.environment = env
-
-    do {
-        try task.run()
-        task.waitUntilExit()
-        exit(task.terminationStatus)
-    } catch {
-        fputs("Error: failed to run command: \(error.localizedDescription)\n", stderr)
-        exit(1)
+    // Apply resolved environment to the current process
+    for (key, value) in env {
+        setenv(key, value, 1)
     }
+    for key in ProcessInfo.processInfo.environment.keys {
+        if env[key] == nil {
+            unsetenv(key)
+        }
+    }
+
+    // Replace this process with the command (inherits TTY, signals, everything)
+    let argv = command.map { strdup($0) } + [nil]
+    execvp(command[0], argv)
+
+    // execvp only returns on failure
+    fputs("Error: failed to exec '\(command[0])': \(String(cString: strerror(errno)))\n", stderr)
+    exit(127)
 }
 
 func usage() {
     fputs("""
+    touchenv \(version)
+
     Usage: touchenv <command> [args]
 
     Commands:
@@ -361,6 +367,9 @@ struct TouchEnv {
                 fputs("Usage: touchenv exec <envfile> -- <command...>\n", stderr)
                 exit(1)
             }
+
+        case "--version", "-v", "version":
+            print("touchenv \(version)")
 
         default:
             fputs("Unknown command: \(command)\n", stderr)
