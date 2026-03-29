@@ -6,9 +6,18 @@ let package = Package(
     name: "touchenv",
     platforms: [.macOS(.v12)],
     targets: [
+        .target(
+            name: "TouchEnvLib",
+            path: "Sources/TouchEnvLib"
+        ),
         .executableTarget(
             name: "touchenv",
-            path: "Sources"
-        )
+            dependencies: ["TouchEnvLib"],
+            path: "Sources/touchenv"
+        ),
+        .testTarget(
+            name: "TouchEnvLibTests",
+            dependencies: ["TouchEnvLib"]
+        ),
     ]
 )
