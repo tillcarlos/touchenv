@@ -4,7 +4,7 @@ import LocalAuthentication
 import TouchEnvLib
 
 let account = "touchenv"
-let appVersion = "1.0.0"
+let appVersion = "1.1.0"
 
 // MARK: - Helpers
 
@@ -45,6 +45,29 @@ extension Data {
     }
 }
 
+/// Get the name of the parent process that invoked touchenv.
+func parentProcessName() -> String? {
+    let ppid = getppid()
+    guard ppid > 0 else { return nil }
+    let proc = ProcessInfo.processInfo
+    // Use ps to get the parent's command — works reliably on macOS
+    let task = Process()
+    task.executableURL = URL(fileURLWithPath: "/bin/ps")
+    task.arguments = ["-p", "\(ppid)", "-o", "command="]
+    let pipe = Pipe()
+    task.standardOutput = pipe
+    task.standardError = FileHandle.nullDevice
+    do {
+        try task.run()
+        task.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !output.isEmpty {
+            return output
+        }
+    } catch {}
+    return nil
+}
+
 // MARK: - Touch ID
 
 /// Prompt Touch ID and block until the user authenticates or cancels.
@@ -57,10 +80,15 @@ func requireTouchID(reason: String) -> LAContext {
         fatal("Touch ID not available: \(error?.localizedDescription ?? "unknown")")
     }
 
+    var fullReason = reason
+    if let caller = parentProcessName() {
+        fullReason += "\ncaller: \(caller)"
+    }
+
     let semaphore = DispatchSemaphore(value: 0)
     var authError: Error?
 
-    context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { success, err in
+    context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: fullReason) { success, err in
         if !success { authError = err }
         semaphore.signal()
     }
@@ -115,7 +143,7 @@ func readSecretFromStdin() -> Data {
 // MARK: - Commands
 
 func store(service: String) {
-    let _ = requireTouchID(reason: "Authenticate to store a secret")
+    let _ = requireTouchID(reason: "-> touchenv store \(service)")
     let data = readSecretFromStdin()
 
     SecItemDelete(baseQuery(service: service) as CFDictionary)
@@ -169,12 +197,12 @@ func getValue(service: String, context: LAContext) -> String {
 }
 
 func get(service: String) {
-    let context = requireTouchID(reason: "Access 1 secret")
+    let context = requireTouchID(reason: "-> touchenv get \(service)")
     print(getValue(service: service, context: context), terminator: "")
 }
 
 func delete(service: String) {
-    let _ = requireTouchID(reason: "Authenticate to delete a secret")
+    let _ = requireTouchID(reason: "-> touchenv delete \(service)")
 
     let status = SecItemDelete(baseQuery(service: service) as CFDictionary)
 
@@ -189,7 +217,7 @@ func delete(service: String) {
 }
 
 func list() {
-    let _ = requireTouchID(reason: "List stored secrets")
+    let _ = requireTouchID(reason: "-> touchenv list")
 
     let query: [String: Any] = [
         kSecClass as String: kSecClassGenericPassword,
@@ -242,7 +270,8 @@ func exec(envFile: String, command: [String]) {
     }
 
     if !keychainKeys.isEmpty {
-        let context = requireTouchID(reason: "Unlock \(keychainKeys.count) secret\(keychainKeys.count == 1 ? "" : "s")")
+        let cmdLabel = command.joined(separator: " ")
+        let context = requireTouchID(reason: "-> touchenv exec \(envFile) -- \(cmdLabel)")
 
         for entry in entries where entry.value.hasPrefix("touchenv:") {
             let keychainKey = String(entry.value.dropFirst("touchenv:".count))
