@@ -28,6 +28,39 @@ Store secrets in macOS Keychain. Unlock with Touch ID. Use them in `.env` files.
 
 No plaintext keys in your repo. No extra services. Just your fingerprint.
 
+## Quick start
+
+```bash
+# 1. Install
+git clone https://github.com/tillcarlos/touchenv.git
+cd touchenv && make install
+
+# 2. Store a secret in the Keychain
+touchenv store MY_API_KEY
+
+# 3. Reference it in your .env file
+#    Replace the plaintext value:
+#      MY_API_KEY=sk-abc123
+#    With a touchenv reference:
+#      MY_API_KEY=touchenv:MY_API_KEY
+
+# 4. Run your command with secrets injected
+touchenv exec .env -- sh -c 'echo $MY_API_KEY'
+```
+
+**Important:** Always wrap your command in `sh -c '...'` (single quotes) when you need shell variable expansion. Without it, your current shell expands `$MY_API_KEY` *before* touchenv sets it:
+
+```bash
+# ✗ Won't work — $MY_API_KEY is expanded by your shell (to empty)
+touchenv exec .env -- echo $MY_API_KEY
+
+# ✓ Works — sh expands $MY_API_KEY after touchenv sets it
+touchenv exec .env -- sh -c 'echo $MY_API_KEY'
+
+# ✓ Also works — commands that read their own env don't need sh -c
+touchenv exec .env -- bin/deploy.sh
+```
+
 ## Install
 
 ```bash
