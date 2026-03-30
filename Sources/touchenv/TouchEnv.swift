@@ -148,19 +148,9 @@ func store(service: String) {
 
     SecItemDelete(baseQuery(service: service) as CFDictionary)
 
-    var accessError: Unmanaged<CFError>?
-    guard let accessControl = SecAccessControlCreateWithFlags(
-        nil,
-        kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-        .biometryCurrentSet,
-        &accessError
-    ) else {
-        fatal("failed to create access control: \(accessError?.takeRetainedValue().localizedDescription ?? "unknown")")
-    }
-
     var query = baseQuery(service: service)
     query[kSecValueData as String] = data
-    query[kSecAttrAccessControl as String] = accessControl
+    query[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
 
     let status = SecItemAdd(query as CFDictionary, nil)
     if status != errSecSuccess {
@@ -243,19 +233,23 @@ func list() {
     }
 }
 
-func exec(envFile: String, command: [String]) {
-    let contents: String
-    do {
-        contents = try String(contentsOfFile: envFile, encoding: .utf8)
-    } catch {
-        fatal("cannot read '\(envFile)': \(error.localizedDescription)")
+func exec(envFiles: [String], command: [String]) {
+    var env = ProcessInfo.processInfo.environment
+    var allEntries: [EnvEntry] = []
+
+    for envFile in envFiles {
+        let contents: String
+        do {
+            contents = try String(contentsOfFile: envFile, encoding: .utf8)
+        } catch {
+            fatal("cannot read '\(envFile)': \(error.localizedDescription)")
+        }
+        let entries = parseEnvFile(contents)
+        allEntries.append(contentsOf: entries)
     }
 
-    var env = ProcessInfo.processInfo.environment
-    let entries = parseEnvFile(contents)
-
     var keychainKeys: [String] = []
-    for entry in entries {
+    for entry in allEntries {
         env[entry.key] = entry.value
         if entry.value.hasPrefix("touchenv:") {
             let keychainKey = String(entry.value.dropFirst("touchenv:".count))
@@ -271,9 +265,10 @@ func exec(envFile: String, command: [String]) {
 
     if !keychainKeys.isEmpty {
         let cmdLabel = command.joined(separator: " ")
-        let context = requireTouchID(reason: "-> touchenv exec \(envFile) -- \(cmdLabel)")
+        let filesLabel = envFiles.joined(separator: " ")
+        let context = requireTouchID(reason: "-> touchenv exec \(filesLabel) -- \(cmdLabel)")
 
-        for entry in entries where entry.value.hasPrefix("touchenv:") {
+        for entry in allEntries where entry.value.hasPrefix("touchenv:") {
             let keychainKey = String(entry.value.dropFirst("touchenv:".count))
             env[entry.key] = getValue(service: keychainKey, context: context)
         }
@@ -304,7 +299,7 @@ func usage() {
       get <key>                  Retrieve a secret (Touch ID) -> stdout
       delete <key>               Remove from Keychain
       list                       List stored keys
-      exec <envfile> -- <cmd>    Load .env, resolve touchenv: values, run cmd
+      exec <envfile>... -- <cmd> Load .env file(s), resolve touchenv: values, run cmd
 
     In .env files, use touchenv:<key> as a value to pull from Keychain:
       NODE_KEY=touchenv:MYAPP_NODE_STAGING_KEY
@@ -313,6 +308,7 @@ func usage() {
       touchenv store MY_KEY
       touchenv get MY_KEY
       touchenv exec .env.staging -- bin/deploy_backend.sh staging
+      touchenv exec .env.production .env.build -- kamal deploy -d production
 
     """, stderr)
 }
@@ -348,15 +344,15 @@ struct TouchEnv {
         case "exec":
             let remaining = Array(args.dropFirst())
             if let dashIndex = remaining.firstIndex(of: "--") {
-                guard dashIndex == 1 else {
-                    fputs("Usage: touchenv exec <envfile> -- <command...>\n", stderr)
+                let envFiles = Array(remaining[..<dashIndex])
+                guard !envFiles.isEmpty else {
+                    fputs("Usage: touchenv exec <envfile>... -- <command...>\n", stderr)
                     exit(1)
                 }
-                let envFile = remaining[0]
                 let cmd = Array(remaining[(dashIndex + 1)...])
-                exec(envFile: envFile, command: cmd)
+                exec(envFiles: envFiles, command: cmd)
             } else {
-                fputs("Usage: touchenv exec <envfile> -- <command...>\n", stderr)
+                fputs("Usage: touchenv exec <envfile>... -- <command...>\n", stderr)
                 exit(1)
             }
 
