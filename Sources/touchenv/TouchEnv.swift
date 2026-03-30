@@ -4,7 +4,7 @@ import LocalAuthentication
 import TouchEnvLib
 
 let account = "touchenv"
-let appVersion = "1.1.0"
+let appVersion = "1.2.0"
 
 // MARK: - Helpers
 
@@ -49,7 +49,6 @@ extension Data {
 func parentProcessName() -> String? {
     let ppid = getppid()
     guard ppid > 0 else { return nil }
-    let proc = ProcessInfo.processInfo
     // Use ps to get the parent's command — works reliably on macOS
     let task = Process()
     task.executableURL = URL(fileURLWithPath: "/bin/ps")
